@@ -9,6 +9,6 @@ def list(event, context):
     # create a response
     response = {
         "statusCode": 200,
-        "body": json.dumps(result, cls=decimalencoder.DecimalEncoder)
+        "body": json.dumps({"body": json.dumps(result, cls=decimalencoder.DecimalEncoder)})
     }
     return response
