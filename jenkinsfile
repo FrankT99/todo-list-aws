@@ -1,1 +1,60 @@
+pipeline {
+    agent any
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+    }
 
+    stages {
+        stage('Get Code') {
+            steps {
+                echo 'Removing old files from workspace previous builds'
+                deleteDir()
+                echo 'Getting GitHub code'
+                git credentialsId: 'github-token', branch: 'master', url: 'https://github.com/FrankT99/todo-list-aws'
+            }
+        }
+
+        stage('Deploy (SAM)') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws_access_key_id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws_secret_access_key', variable: 'AWS_SECRET_ACCESS_KEY'),
+                    string(credentialsId: 'aws-session-token', variable: 'AWS_SESSION_TOKEN')]) {
+                        
+                        sh '''
+                            echo 'Deploying in Production'
+
+                            echo 'Running Sam validate'
+                            sam validate
+
+                            echo 'Running Sam build'
+                            sam build
+
+                            echo 'Running Sam deploy'
+                            sam deploy --config-env production
+                            '''
+                    }
+
+                script{
+                    BASE_URL = sh(
+                        script: "aws cloudformation describe-stacks --stack-name todo-list-aws-production --query 'Stacks[0].Outputs[?OutputKey==`BaseUrlApi`].OutputValue' --region us-east-1 --output text",
+                        returnStdout: true
+                        )
+                    echo "$BASE_URL"
+                }
+            }
+        }
+
+        stage('Rest Test'){
+            steps{
+                echo 'Ejecutando pruebas con pytest...'
+                withEnv(["BASE_URL=${BASE_URL}"]) {
+                    sh 'python -m pytest test/integration/todoApiTest.py -v --junitxml=result.xml'
+                }
+
+                echo 'Publicando resultados de pytest'
+                junit 'result.xml'
+            }
+        }
+    }
+}
