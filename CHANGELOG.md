@@ -8,3 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Versión inicial de código.
 
+## [1.1.0] - 2025-07-07
+### Added
+- Pipeline CI on develop + configs to master
