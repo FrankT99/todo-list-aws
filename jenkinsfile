@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+    }
+
+    stages {
+        stage('Get Code') {
+            steps {
+                echo 'Removing old files from workspace previous builds'
+                deleteDir()
+                echo 'Getting GitHub code'
+                git credentialsId: 'github-token', branch: 'develop', url: 'https://github.com/FrankT99/todo-list-aws'
+            }
+        }
+
+        stage('Static Test') {
+            steps {
+                echo 'Performing Flake8 test'
+                sh 'flake8 --format=pylint src/ > flake8.out'
+                recordIssues tools: [flake8(name: 'Flake8', pattern: 'flake8.out')]
+                
+                echo 'Performing Bandit test'
+                sh 'bandit -r src/ -f custom -o bandit.out --msg-template "{abspath}:{line}:{severity}:{test_id}:{msg}"'
+                recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')]
+            }
+        }
+
+        stage('Deploy (SAM)') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws_access_key_id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws_secret_access_key', variable: 'AWS_SECRET_ACCESS_KEY'),
+                    string(credentialsId: 'aws-session-token', variable: 'AWS_SESSION_TOKEN')]) {
+                        
+                        sh '''
+                            echo 'Deploying in Staging'
+
+                            echo 'Running Sam validate'
+                            sam validate
+
+                            echo 'Running Sam build'
+                            sam build
+
+                            echo 'Running Sam deploy'
+                            sam deploy --config-env staging --no-fail-on-empty-changeset
+                            '''
+                    }
+
+                script{
+                    BASE_URL = sh(
+                        script: "aws cloudformation describe-stacks --stack-name todo-list-aws-staging --query 'Stacks[0].Outputs[?OutputKey==`BaseUrlApi`].OutputValue' --region us-east-1 --output text",
+                        returnStdout: true
+                        )
+                    echo "$BASE_URL"
+                }
+            }
+        }
+
+        stage('Rest Test'){
+            steps{
+                echo 'Ejecutando pruebas con pytest...'
+                withEnv(["BASE_URL=${BASE_URL}"]) {
+                    sh 'python -m pytest test/integration/todoApiTest.py -v --junitxml=result.xml'
+                }
+
+                echo 'Publicando resultados de pytest'
+                junit 'result.xml'
+            }
+        }
+
+        stage('Promote'){
+            steps{
+                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                    sh '''
+                        git checkout master
+                        git merge develop --no-ff -m "CI pipeline successful - Merging Develop branch to Master"
+                        git push https://$GITHUB_TOKEN@github.com/FrankT99/todo-list-aws.git master
+                    '''
+                }
+            }
+        }
+    }
+}
