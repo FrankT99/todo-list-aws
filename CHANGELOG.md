@@ -15,3 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.1] - 2025-07-07
 ### Added
 - Added .gittatributes to delevop branch
+
+## [1.2.0] - 2025-07-07
+### Added
+- Pipeline CD on master
+
+## [2.0.0] - 2025-07-07
+### Added
+- Added CI on develop - jenkinsfile_agentes
